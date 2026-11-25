@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mood Machine — 情绪机器</title>
+<style>
+  :root{
+    --ink: #04050a;
+    --fg: rgba(255,255,255,.86);
+    --dim: rgba(255,255,255,.42);
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html, body{
+    height:100%;
+    background: var(--ink);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow:hidden;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+
+  /* ---------- 画布 ---------- */
+  #scene{
+    position:fixed; inset:0;
+    display:block;
+    cursor:crosshair;
+    touch-action:none;
+  }
+
+  /* ---------- 暗角 ---------- */
+  .vignette{
+    position:fixed; inset:0;
+    pointer-events:none;
+    background: radial-gradient(ellipse at 50% 48%,
+                transparent 42%,
+                rgba(0,0,0,.45) 78%,
+                rgba(0,0,0,.78) 100%);
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .top{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px 28px;
+    z-index:10;
+    pointer-events:none;
+  }
+  .brand{
+    font-size:12px;
+    letter-spacing:.34em;
+    font-weight:700;
+    color:rgba(255,255,255,.72);
+    text-shadow:0 0 30px rgba(120,140,255,.35);
+  }
+  .brand span{
+    color:rgba(255,255,255,.3);
+    margin-left:7px;
+    font-weight:500;
+  }
+  .controls{
+    display:flex; gap:10px;
+    pointer-events:auto;
+  }
+  .controls button{
+    font-family:inherit;
+    font-size:11.5px;
+    letter-spacing:.06em;
+    padding:8px 15px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.13);
+    background:rgba(255,255,255,.05);
+    color:rgba(255,255,255,.7);
+    cursor:pointer;
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    transition:background .22s, color .22s, border-color .22s;
+  }
+  .controls button:hover{
+    background:rgba(255,255,255,.13);
+    color:#fff;
+  }
+  .controls button.on{
+    background:rgba(255,255,255,.92);
+    color:#04050a;
+    border-color:transparent;
+  }
+
+  /* ---------- 底部 ---------- */
+  .bottom{
+    position:fixed;
+    left:0; right:0; bottom:0;
+    padding:0 28px 32px;
+    display:flex; flex-direction:column; align-items:center;
+    gap:26px;
+    z-index:10;
+    pointer-events:none;
+  }
+
+  .poem{
+    font-family:"Songti SC","STSong","Noto Serif SC",Georgia,serif;
+    font-size:clamp(15px, 2.1vw, 21px);
+    line-height:1.8;
+    letter-spacing:.05em;
+    text-align:center;
+    max-width:760px;
+    color:rgba(255,255,255,.9);
+    text-shadow:0 2px 34px rgba(0,0,0,.9), 0 0 60px rgba(0,0,0,.6);
+    opacity:0;
+    transform:translateY(10px);
+    transition:opacity .85s ease, transform .85s ease;
+  }
+  .poem.show{
+    opacity:1;
+    transform:none;
+  }
+
+  .sliders{
+    display:flex;
+    gap:40px;
+    padding:16px 30px;
+    border-radius:18px;
+    background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.07);
+    backdrop-filter:blur(16px);
+    -webkit-backdrop-filter:blur(16px);
+    pointer-events:auto;
+  }
+  .slider{
+    width:118px;
+    display:flex; flex-direction:column; gap:11px;
+  }
+  .slider label{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:10px;
+    letter-spacing:.26em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.4);
+  }
+  .slider .val{
+    letter-spacing:.08em;
+    color:rgba(255,255,255,.68);
+    font-variant-numeric:tabular-nums;
+  }
+
+  input[type=range]{
+    -webkit-appearance:none;
+    appearance:none;
+    width:100%;
+    height:2px;
+    background:rgba(255,255,255,.16);
+    border-radius:2px;
+    outline:none;
+    cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:12px; height:12px;
+    border-radius:50%;
+    background:#fff;
+    box-shadow:0 0 14px rgba(255,255,255,.65);
+    transition:transform .16s ease;
+  }
+  input[type=range]::-webkit-slider-thumb:hover{
+    transform:scale(1.3);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:12px; height:12px;
+    border:none;
+    border-radius:50%;
+    background:#fff;
+    box-shadow:0 0 14px rgba(255,255,255,.65);
+  }
+
+  /* ---------- 移动端 ---------- */
+  @media (max-width:720px){
+    .top{ padding:16px 18px; }
+    .bottom{ padding:0 16px 20px; gap:20px; }
+    .sliders{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:18px 30px;
+      width:100%;
+      padding:16px 22px;
+    }
+    .slider{ width:auto; }
+    .poem{ font-size:14px; line-height:1.75; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+<div class="vignette"></div>
+
+<header class="top">
+  <div class="brand">MOOD<span>MACHINE</span></div>
+  <div class="controls">
+    <button id="shuffle" type="button">↻ 随机</button>
+    <button id="sound" type="button">♪ 声音</button>
+  </div>
+</header>
+
+<footer class="bottom">
+  <p class="poem" id="poem"></p>
+
+  <div class="sliders">
+    <div class="slider">
+      <label>能量 <span class="val">50</span></label>
+      <input type="range" min="0" max="100" value="50" data-param="energy">
+    </div>
+    <div class="slider">
+      <label>温度 <span class="val">50</span></label>
+      <input type="range" min="0" max="100" value="50" data-param="warmth">
+    </div>
+    <div class="slider">
+      <label>混沌 <span class="val">50</span></label>
+      <input type="range" min="0" max="100" value="50" data-param="chaos">
+    </div>
+    <div class="slider">
+      <label>深度 <span class="val">60</span></label>
+      <input type="range" min="0" max="100" value="60" data-param="depth">
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     参数
+     ============================================================ */
+  const params = { energy: .5, warmth: .5, chaos: .5, depth: .6 };
+
+  /* ============================================================
+     画布
+     ============================================================ */
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#04050a';
+    ctx.fillRect(0, 0, W, H);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ============================================================
+     噪声
+     ============================================================ */
+  function noise(x, y, t) {
+    return Math.sin(x * 6.3 + t * .7) * Math.cos(y * 5.1 - t * .5)
+         + .6 * Math.sin((x + y) * 4.4 - t * .9);
+  }
+
+  /* ============================================================
+     粒子
+     ============================================================ */
+  const particles = [];
+
+  function Particle() { this.reset(true); }
+
+  Particle.prototype.reset = function (initial) {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.px = this.x;
+    this.py = this.y;
+    this.life = 100 + Math.random() * 240;
+    this.age = initial ? Math.random() * this.life : 0;
+    this.w = .6 + Math.random() * 1.2;
+    this.hueShift = (Math.random() - .5) * 36;
+  };
+
+  function syncCount() {
+    const target = Math.round(340 + params.energy * 660);
+    while (particles.length < target) particles.push(new Particle());
+    while (particles.length > target) particles.pop();
+  }
+
+  /* ============================================================
+     鼠标 / 脉冲
+     ============================================================ */
+  const mouse = { x: -9999, y: -9999 };
+  const pulses = [];
+
+  window.addEventListener('pointermove', function (e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  }, { passive: true });
+
+  document.addEventListener('pointerleave', function () {
+    mouse.x = -9999;
+    mouse.y = -9999;
+  });
+
+  canvas.addEventListener('pointerdown', function (e) {
+    pulses.push({ x: e.clientX, y: e.clientY, r: 0 });
+    if (soundOn) playNote(e.clientX);
+  });
+
+  /* ============================================================
+     声音
+     ============================================================ */
+  let soundOn = false;
+  let audioCtx = null;
+  const scale = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
+
+  function playNote(x) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      const t0 = audioCtx.currentTime;
+      const idx = Math.floor((x / Math.max(1, W)) * scale.length);
+      const semis = scale[Math.max(0, Math.min(scale.length - 1, idx))];
+      const freq = 196 * Math.pow(2, semis / 12);
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.07, t0 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.2);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 2.4);
+    } catch (err) { /* 静默失败 */ }
+  }
+
+  /* ============================================================
+     诗句库
+     ============================================================ */
+  const poems = [
+    { e:.10, w:.20, c:.10, d:.90, t:'你是凌晨四点的一片深蓝，什么都没有发生，这很好。' },
+    { e:.15, w:.30, c:.20, d:.80, t:'你像一场还没有开始的雨，安静地悬在天上。' },
+    { e:.10, w:.10, c:.10, d:.50, t:'你是一块被遗忘的石头，时间从你身上慢慢流过。' },
+    { e:.90, w:.90, c:.50, d:.30, t:'你是一团正在庆祝的火，连灰烬都想跳舞。' },
+    { e:.70, w:.70, c:.80, d:.40, t:'你是一场夏天的雷暴，明亮、喧闹、不讲道理。' },
+    { e:.50, w:.50, c:.50, d:.50, t:'你是一个刚刚好的下午，风把窗帘吹成海浪。' },
+    { e:.20, w:.70, c:.20, d:.60, t:'你是一杯放凉的茶，甜还在，只是不再烫了。' },
+    { e:.80, w:.10, c:.90, d:.20, t:'你是一道撕裂夜空的闪电，短暂，但足够让所有人抬头。' },
+    { e:.30, w:.90, c:.30, d:.30, t:'你是一块融化的糖，正在变成夏天。' },
+    { e:.05, w:.50, c:.05, d:1.0, t:'你是宇宙尽头的一粒尘，安静得几乎不存在——但你在。' },
+    { e:.95, w:.50, c:.70, d:.20, t:'你是一颗超新星，最后一次爆发，把整个夜空染白。' },
+    { e:.40, w:.30, c:.60, d:.70, t:'你是一片起了雾的海，看不清方向，但听得见潮声。' },
+    { e:.60, w:.80, c:.40, d:.40, t:'你是一封写到一半的情书，墨迹还没干。' },
+    { e:.20, w:.40, c:.70, d:.80, t:'你是一个反复出现的梦，每次醒来都少记得一点。' },
+    { e:.70, w:.40, c:.50, d:.60, t:'你是一列穿过隧道的火车，光在前方，越来越近。' },
+    { e:.35, w:.15, c:.30, d:.90, t:'你是深海里的一个气泡，上升了整整一百年。' },
+    { e:.85, w:.95, c:.90, d:.50, t:'你是一颗正在诞生的太阳，所有人都在眯着眼看你。' },
+    { e:.45, w:.60, c:.15, d:.35, t:'你是春天的一个普通下午，光落在你不想收起的膝盖上。' },
+    { e:.05, w:.05, c:.05, d:.30, t:'你是一张白纸，连风都懒得经过。' },
+    { e:.55, w:.35, c:.95, d:.45, t:'你是一段被反复擦写的磁带，每一个声音都带着上一个人的指纹。' }
+  ];
+
+  const poemEl = document.getElementById('poem');
+  let currentPoem = -1;
+  let poemToken = 0;
+
+  function updatePoem() {
+    let best = 0;
+    let bestD = Infinity;
+
+    for (let i = 0; i < poems.length; i++) {
+      const p = poems[i];
+      const d = Math.pow(p.e - params.energy, 2)
+              + Math.pow(p.w - params.warmth, 2)
+              + Math.pow(p.c - params.chaos, 2)
+              + Math.pow(p.d - params.depth, 2);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+
+    if (best === currentPoem) return;
+    currentPoem = best;
+
+    const token = ++poemToken;
+    poemEl.classList.remove('show');
+
+    window.setTimeout(function () {
+      if (token !== poemToken) return;
+      poemEl.textContent = poems[best].t;
+      poemEl.classList.add('show');
+    }, 240);
+  }
+
+  /* ============================================================
+     滑块
+     ============================================================ */
+  const inputs = document.querySelectorAll('input[type=range]');
+
+  inputs.forEach(function (input) {
+    const key = input.dataset.param;
+    const valEl = input.closest('.slider').querySelector('.val');
+
+    input.addEventListener('input', function () {
+      params[key] = input.value / 100;
+      valEl.textContent = input.value;
+      syncCount();
+      updatePoem();
+    });
+  });
+
+  /* ============================================================
+     按钮
+     ============================================================ */
+  const shuffleBtn = document.getElementById('shuffle');
+
+  shuffleBtn.addEventListener('click', function () {
+    inputs.forEach(function (input) {
+      const key = input.dataset.param;
+      const v = 12 + Math.round(Math.random() * 88);
+      params[key] = v / 100;
+      input.value = v;
+      input.closest('.slider').querySelector('.val').textContent = v;
+    });
+
+    syncCount();
+    updatePoem();
+
+    shuffleBtn.animate(
+      [
+        { transform: 'rotate(0deg)' },
+        { transform: 'rotate(180deg)' },
+        { transform: 'rotate(360deg)' }
+      ],
+      { duration: 420, easing: 'ease-out' }
+    );
+  });
+
+  const soundBtn = document.getElementById('sound');
+
+  soundBtn.addEventListener('click', function () {
+    soundOn = !soundOn;
+    soundBtn.classList.toggle('on', soundOn);
+    soundBtn.textContent = soundOn ? '♪ 声音开' : '♪ 声音';
+
+    if (soundOn) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      } catch (err) { /* 忽略 */ }
+      playNote(W * 0.5);
+    }
+  });
+
+  /* ============================================================
+     主循环
+     ============================================================ */
+  let t = 0;
+
+  function frame() {
+    t += 0.008;
+
+    /* ---- 背景残影 ---- */
+    ctx.globalCompositeOperation = 'source-over';
+    const fade = 0.045 + (1 - params.depth) * 0.13;
+    ctx.fillStyle = 'rgba(4,5,10,' + fade.toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+
+    /* ---- 背景光晕 ---- */
+    const baseHue = 200 + 190 * params.warmth;
+    const gx = W * 0.5;
+    const gy = H * 0.42;
+    const gr = Math.max(W, H) * 0.72;
+    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    glow.addColorStop(0, 'hsla(' + baseHue.toFixed(1) + ', 70%, 46%, ' +
+      (0.08 + params.warmth * 0.10).toFixed(3) + ')');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    /* ---- 脉冲推进 ---- */
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      pulses[i].r += 8 + params.energy * 8;
+      if (pulses[i].r > 520) pulses.splice(i, 1);
+    }
+
+    /* ---- 粒子 ---- */
+    const speed = 0.25 + params.energy * 1.9;
+    const angleAmp = Math.PI * (0.35 + params.chaos * 2.6);
+
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.px = p.x;
+      p.py = p.y;
+
+      /* 流场 */
+      const a = noise(p.x * 0.0016, p.y * 0.0016, t) * angleAmp;
+      p.x += Math.cos(a) * speed;
+      p.y += Math.sin(a) * speed;
+
+      /* 鼠标斥力 */
+      if (mouse.x > -1000) {
+        const dx = p.x - mouse.x;
+        const dy = p.y - mouse.y;
+        const d2 = dx * dx + dy * dy;
+
+        if (d2 < 20000 && d2 > 1) {
+          const d = Math.sqrt(d2);
+          const f = (1 - d / 141) * 2.4;
+          p.x += (dx / d) * f;
+          p.y += (dy / d) * f;
+        }
+      }
+
+      /* 脉冲冲击 */
+      for (let k = 0; k < pulses.length; k++) {
+        const pu = pulses[k];
+        const dx = p.x - pu.x;
+        const dy = p.y - pu.y;
+        const d = Math.sqrt(dx * dx + dy * dy) + 0.1;
+        const ring = 70;
+        const diff = Math.abs(d - pu.r);
+
+        if (diff < ring) {
+          const f = (1 - diff / ring) * 5;
+          p.x += (dx / d) * f;
+          p.y += (dy / d) * f;
+        }
+      }
+
+      p.age++;
+
+      if (p.age > p.life || p.x < -30 || p.x > W + 30 || p.y < -30 || p.y > H + 30) {
+        p.reset(false);
+        continue;
+      }
+
+      const lifeT = p.age / p.life;
+      const alpha = Math.sin(lifeT * Math.PI) * (0.22 + params.depth * 0.55);
+      const hue = (baseHue + p.hueShift + Math.sin(p.x * 0.01 + p.y * 0.013) * 18) % 360;
+      const light = 52 + 16 * Math.sin(p.age * 0.045 + p.hueShift);
+
+      ctx.beginPath();
+      ctx.moveTo(p.px, p.py);
+      ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = 'hsla(' + hue.toFixed(1) + ', 88%, ' +
+                        light.toFixed(1) + '%, ' + alpha.toFixed(3) + ')';
+      ctx.lineWidth = p.w;
+      ctx.stroke();
+    }
+
+    /* ---- 脉冲圆环 ---- */
+    for (let i = 0; i < pulses.length; i++) {
+      const pu = pulses[i];
+      const a = Math.max(0, 1 - pu.r / 520);
+      ctx.beginPath();
+      ctx.arc(pu.x, pu.y, pu.r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'hsla(' + baseHue.toFixed(1) + ', 90%, 68%, ' +
+                        (a * 0.32).toFixed(3) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    /* ---- 鼠标光点 ---- */
+    if (mouse.x > -1000) {
+      const mg = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 90);
+      mg.addColorStop(0, 'hsla(' + baseHue.toFixed(1) + ', 90%, 72%, 0.10)');
+      mg.addColorStop(1, 'transparent');
+      ctx.fillStyle = mg;
+      ctx.fillRect(mouse.x - 90, mouse.y - 90, 180, 180);
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================
+     启动
+     ============================================================ */
+  syncCount();
+  updatePoem();
+
+  window.setTimeout(function () {
+    if (currentPoem >= 0) poemEl.classList.add('show');
+  }, 600);
+
+  requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
